@@ -1,0 +1,298 @@
+---
+title: "Analisis Sentimen Data Tweets X"
+author: "Risang Panggalih 123190092 Ananda Eka Agusta 123190094"
+date: "12/10/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+#Library yang digunakan
+  library(twitteR)
+  library(rtweet)
+  library(tm)
+  library(e1071)
+  library(caret)
+  library(syuzhet)
+  library(RTextTools)
+  library(dplyr)
+  library(vroom)
+  library(here)
+  library(ggplot2)
+  library(plotly)
+  library(DT)
+  library(wordcloud)
+  library(wordcloud2)
+  library(RColorBrewer)
+  library(shiny)
+  library(shinydashboard)
+```
+
+```{r}
+#Setup API Twitter
+  api_key<- "NJOBoCn8vQqzgpah0Sv7GfwI2"
+  api_secret<- "RfupenB91kf72tSysm8JO1cuL9uETGxCk7nJYdM3twILr75gZH"
+  access_token<- "1285864645505384448-1FTo5ipTBoc5vZDiT2jGUhCMaL372y"
+  access_token_secret<- "SMbVZxYSi9NhmEkhTsNwLJjzc7OD5UFW6fY6maN4FTNUq"
+  
+  token <- create_token(
+  app = "DS 123190092/123190094",
+  consumer_key = api_key,
+  consumer_secret = api_secret,
+  access_token = access_token,
+  access_secret = access_token_secret
+)
+```
+
+```{r}
+#Mengumpulkan Data
+tw = search_tweets("cafe jogja", 
+                   n = 2000,
+                   lang  = "id",
+                   token = token)
+saveRDS(tw,file = 'cafe.rds')
+```
+
+```{r}
+#Text Mining
+  d <- readRDS('cafe.rds') #Membaca Dataset .rds
+  komen <- d$text
+  komenc <- Corpus(VectorSource(komen)) #Memecah kata menjadi vector
+
+#Hapus URL
+  removeURL <- function(x) {
+    gsub("http[^[:space:]]*", "", x)
+  }
+  twitclean <- tm_map(komenc, removeURL)
+
+#Hapus New Line
+  removeNL <- function(y) {
+    gsub("\n", "", y)
+  } 
+  twitclean <- tm_map(twitclean, removeNL)
+  
+#Hapus Koma
+  replacecomma <- function(y){
+    gsub(",", "", y)
+  } 
+  twitclean <- tm_map(twitclean, replacecomma)  
+
+#Hapus Titik Dua
+  removetitik2 <- function(y){ 
+    gsub(":", "", y)
+  }
+  twitclean <- tm_map(twitclean, removetitik2)  
+
+#Hapus Titik Koma
+  removetitikkoma <- function(y) {
+    gsub(";", " ", y)
+  }
+  twitclean <- tm_map(twitclean, removetitikkoma)  
+  
+#Hapus Retweet (RT)
+  removeRT <- function(y) {
+    gsub("RT ", "", y)
+  }
+  twitclean <- tm_map(twitclean, removeRT)
+
+#Hapus &amp dan amp
+  removeamp <- function(y) {
+    gsub("&amp;", "", y)
+  }
+  twitclean <- tm_map(twitclean, removeamp)
+  
+  removeamp2 <- function(y) {
+    gsub("amp", "", y)
+  }
+  twitclean <- tm_map(twitclean, removeamp2)
+  
+#Hapus dan, ini, dari, yang
+  removedan <- function(y) {
+    gsub("dan", "", y)
+  }
+  twitclean <- tm_map(twitclean, removedan)
+
+  removeini <- function(y) {
+    gsub("ini", "", y)
+  }
+  twitclean <- tm_map(twitclean, removeini)
+  
+  removedari <- function(y) {
+    gsub("dari", "", y)
+  }
+  twitclean <- tm_map(twitclean, removedari)
+  
+  removeyang <- function(y) {
+    gsub("yang", "", y)
+  }
+  twitclean <- tm_map(twitclean, removeyang)  
+  
+#Hapus Mention
+  removeUN <- function(z) {
+    gsub("@\\w+", "", z)
+  }
+  twitclean <- tm_map(twitclean, removeUN)
+
+#Fungsi Hapus Space
+  remove.all <- function(xy) {
+    gsub("[^[:alpha:][:space:]]*", "", xy)
+  }
+  twitclean <-tm_map(twitclean,stripWhitespace)
+  
+#Konversi Data
+  inspect(twitclean[1:10]) #Konversi ke Numerik
+  
+  twitclean <- tm_map(twitclean,remove.all)
+  twitclean <- tm_map(twitclean, removePunctuation) #Tanda Baca
+  twitclean <- tm_map(twitclean, tolower) #Mengubah ke Huruf Kecil
+  twitclean <- tm_map(twitclean , removeWords, 
+                      c('kalo','gak','org',''))
+
+#Hapus Data Kosong
+  try.error = function(x)
+  {
+    #Create missing value
+    y = NA
+    #tryCatch error
+    try_error = tryCatch(tolower(x), error=function(e) e)
+    #if not an error
+    if (!inherits(try_error, "error"))
+      y = tolower(x)
+    #result
+    return(y)
+  }
+  #lower case using try.error with sapply 
+  twitclean = sapply(twitclean, try.error)
+  #remove NAs in some_txt
+  twitclean = twitclean[!is.na(twitclean)]
+  names(twitclean) = NULL
+```
+
+```{r}
+#Menyimpan dataframe Data yang telah difilter/dibersihkan
+  dataframe<-data.frame(text=unlist(sapply(twitclean, `[`)), stringsAsFactors=F)
+  write.csv(dataframe,'databersih.csv') #Menyimpan dalam file .csv
+```
+
+```{r}
+#Membaca Dataset
+  cafe_dataset <-read.csv("databersih.csv",stringsAsFactors = FALSE)
+  review <- as.character(cafe_dataset$text) #Set variabel column text menjadi char
+```
+
+```{r}
+#Wordcloud
+  df<-read.csv("databersih.csv",stringsAsFactors = FALSE)
+  glimpse(df)
+
+  set.seed(20) #Membuat 20 data random
+  df<-df[sample(nrow(df)),]
+  df<-df[sample(nrow(df)),]
+  glimpse(df)
+  df$X=as.factor(df$X)
+  corpus<-Corpus(VectorSource(df$text))
+  corpusLength <- length(corpus)
+  inspect(corpus[1:corpusLength])
+
+#Membersihkan data-data yang tidak diperlukan
+  corpus.clean <- tm_map(corpus,content_transformer(tolower))
+  corpus.clean <- tm_map(corpus.clean,removePunctuation)
+  corpus.clean <- tm_map(corpus.clean,removeNumbers)
+  corpus.clean <- tm_map(corpus.clean,removeWords,stopwords(kind="en"))
+  corpus.clean <- tm_map(corpus.clean,stripWhitespace)
+
+  dtm <- DocumentTermMatrix(corpus.clean)
+  
+  inspect(dtm[1:10, 1:20])
+  df.train  <-df[1:589,]
+  df.test   <-df[590:1177,]
+  dtm.train <-dtm[1:corpusLength,]
+  dtm.test  <-dtm[5:corpusLength,]
+  
+  corpus.clean.train <-corpus.clean[1:589]
+  corpus.clean.test  <-corpus.clean[590:1000]
+  
+  dim(dtm.train)
+  fivefreq <-findFreqTerms(dtm.train,5)
+  length(fivefreq)
+  
+  dtm.train.nb<- DocumentTermMatrix(corpus.clean.train,control = list(dictionary=fivefreq))
+
+  dtm.test.nb <- DocumentTermMatrix(corpus.clean.test,control = list(dictionary=fivefreq))
+  dim(dtm.test.nb)
+  
+  convert_count <- function(x){
+    y<-ifelse(x>0,1,0)
+    y<-factor(y,levels=c(0,1),labels=c("no","yes"))
+    y
+  }
+  trainNB<-apply(dtm.train.nb,2,convert_count)
+  testNB<-apply(dtm.test.nb,1,convert_count)
+  classifier<-naiveBayes(trainNB,df.train$X,laplace = 1)
+  wordcloud(corpus.clean,min.freq = 4,max.words=100, random.order=F, colors=brewer.pal(8, "Dark2"))
+```
+
+```{r}
+#Shiny
+twitter <- read.csv(file="databersih.csv",header=TRUE)
+tweet <- twitter$text
+
+ui <- dashboardPage(
+      dashboardHeader(title = "Dashboard Data Tweets"),
+      dashboardSidebar(disable = T),
+      dashboardBody(
+        fluidPage(
+          titlePanel("Dashboard Data Tweets menggunakan Kata cafe jogja"),
+            mainPanel(
+              width = 12,
+              tabsetPanel(type = "tabs",
+                          tabPanel("Scatterplot Analisis Sentimen", plotOutput("scatterplot")),
+                          tabPanel("Tabel Data Tweets", DT::dataTableOutput('tbl')),
+                          tabPanel("Word Cloud", plotOutput("Wordcloud")))
+            )
+        )
+    )
+  )
+
+#Server
+server <- function(input, output) {
+  
+  #Tabel
+  output$tbl = DT::renderDataTable({
+    DT::datatable(twitter, options = list(lengthChange = FALSE))
+  })
+  
+  #Scatter Plot
+  output$scatterplot <- renderPlot({
+    cafe_dataset<-read.csv("databersih.csv",
+                                  stringsAsFactors = FALSE)
+    
+    review <-as.character(cafe_dataset$text)
+    
+    get_nrc_sentiment('happy')
+    get_nrc_sentiment('excitement')
+    
+    s<-get_nrc_sentiment(review)
+    review_combine<-cbind(cafe_dataset$text,s)
+    par(mar=rep(3,4))
+    barplot(colSums(s),
+            col=rainbow(8),
+            ylab='count',
+            main='Sentiment Analysis')
+  }, height=400)
+  
+  #Wordcloud
+  output$Wordcloud <- renderPlot({
+    wordcloud(corpus.clean,
+              min.freq = 4,
+              max.words=100,
+              random.order=F,
+              colors=brewer.pal(8,"Dark2"))
+  })
+}
+
+shinyApp(ui = ui, server = server)
+```
